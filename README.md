@@ -1,4 +1,6 @@
-# Annual Report Batch Analyzer & Web UI
+<img width="1900" height="878" alt="image" src="https://github.com/user-attachments/assets/663a607f-f50e-4548-9c22-3d5a0d95c32f" /># Annual Report Batch Analyzer & Web UI
+
+<img width="1900" height="878" alt="image" src="https://github.com/user-attachments/assets/51e17225-2844-4c38-8d93-773e33d8a122" />
 
 ## Overview
 Batch process annual reports (txt/md/docx), extract structured per-person summaries via DeepSeek, then generate a consulting-style department/organization review. Prompts are fully customizable:
