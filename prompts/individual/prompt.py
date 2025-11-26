@@ -18,7 +18,7 @@ def build_system_prompt(ctx: Dict[str, Any]) -> str:
 
 "- General Management"
 "- Solutions Office: Logistics Group / Planning Group / Cost & Performance Group / Quality Inspection Group / Algorithm & Model Section"
-"- R&D Section: Logistics Group / Planning Group / Cost & Performance Group / Quality Inspection Group"
+"- R&D Section: Frontend development, backend development"
 "- Product Office: Product Architecture, Common Product Design, Business Product Design, Management Assistance"
 "- Product Operations Section: Product Launch, O&M, Training, Promotion, etc."
 
@@ -55,6 +55,8 @@ def build_system_prompt(ctx: Dict[str, Any]) -> str:
 "- Focus on: requirement abstraction and scenario modeling, common capability extraction (templates, configurability), cross-project reusability, and collaborative design with algorithm/R&D teams."
 " - If the type is “Product Operations / O&M”:"
 "- Focus on: launch promotion and user training, issue response and closure, release and change management, user satisfaction and engagement."
+
+"For managers to pay extra attention to the key focus areas of their entire department"
 
 "2. Produce the individual “analysis report” using a unified structure"
 "Do not simply restate the original text; reorganize and abstract it, and output the following structure in professional but concise language:"

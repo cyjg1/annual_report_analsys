@@ -146,6 +146,64 @@ def load_prompt_builder(module_name: str, func_name: str = "build_prompt") -> Op
     return None
 
 
+def _as_list(val: Any) -> List[Any]:
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        val = val.strip()
+        return [val] if val else []
+    return [val]
+
+
+def normalize_summary(report: Report, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize model output to a consistent schema aligned with the custom prompt sections."""
+    def pick(*keys: str) -> Any:
+        for k in keys:
+            if k in data and data[k] is not None:
+                return data[k]
+        return None
+
+    normalized: Dict[str, Any] = {}
+    normalized["name"] = data.get("name") or report.title
+    normalized["department"] = data.get("department") or report.department
+    normalized["role"] = "cadre" if (data.get("role") or report.role) == "cadre" else "employee"
+    normalized["position"] = data.get("position") or ""
+    normalized["title"] = data.get("title") or report.title
+    normalized["entry_date"] = data.get("entry_date") or ""
+    normalized["work_scope"] = pick(
+        "work_scope",
+        "role_and_work_scope",
+        "role_scope",
+        "role_and_scope",
+        "role_and_work_range",
+        "role_and_work_scope_reconstruction",
+    ) or ""
+    normalized["key_results"] = _as_list(pick("key_results", "key_achievements", "achievements"))
+    normalized["capability_profile"] = _as_list(
+        pick("capability_profile", "capabilities", "capability_profile_summary")
+    )
+    normalized["methodologies"] = _as_list(
+        pick("methodologies", "reusable_assets", "assets", "methods", "frameworks", "tools")
+    )
+    normalized["strengths"] = _as_list(pick("strengths", "advantages", "pros"))
+    normalized["improvements"] = _as_list(pick("improvements", "weaknesses", "gaps", "risks_to_fix"))
+    normalized["self_review"] = _as_list(pick("self_review", "self_assessment"))
+    normalized["issues"] = _as_list(pick("issues", "risk_points", "risks", "problems"))
+    normalized["suggestions"] = _as_list(pick("suggestions", "recommendations", "development_priorities"))
+    normalized["workload"] = pick("workload") or ""
+    normalized["support_to_departments"] = _as_list(
+        pick("support_to_departments", "support", "supporting_departments")
+    )
+    normalized["risk_flags"] = _as_list(pick("risk_flags", "risk_tags"))
+    normalized["tags"] = _as_list(pick("tags", "labels"))
+    normalized["source_path"] = str(report.path)
+    if "error" in data:
+        normalized["error"] = data["error"]
+    return normalized
+
+
 def collect_reports(root: Path) -> List[Report]:
     reports: List[Report] = []
     for file_path in sorted(root.rglob("*")):
@@ -183,6 +241,14 @@ def summarize_individual(
             sys_prompt = sys_prompt_builder({"industry_context": INDUSTRY_CONTEXT, "department_focus": dept_hint})
         except Exception:
             pass
+    sys_prompt = (
+        sys_prompt
+        + "\n\n"
+        + "输出严格 JSON，字段：name, department, role(cadre/employee), position, title, entry_date, "
+        + "work_scope, key_results(list), capability_profile(list), methodologies(list), strengths(list), "
+        + "improvements(list), self_review(list), issues(list), suggestions(list), workload, "
+        + "support_to_departments(list), risk_flags(list), tags(list)。不要输出 Markdown 或额外文字。"
+    )
     prompt_builder = load_prompt_builder("prompts.individual.prompt")
     if prompt_builder:
         try:
@@ -219,16 +285,7 @@ def summarize_individual(
             data = json.loads(cleaned)
         except Exception as exc:
             raise RuntimeError(f"无法解析模型返回的 JSON: {exc}; content={content}") from exc
-    data["source_path"] = str(report.path)
-    if "name" not in data or not data["name"]:
-        data["name"] = report.title
-    if "department" not in data or not data["department"]:
-        data["department"] = report.department
-    if "role" not in data or data["role"] not in {"cadre", "employee"}:
-        data["role"] = report.role
-    if "workload" not in data or not data["workload"]:
-        data["workload"] = "未提及/估计"
-    return data
+    return normalize_summary(report, data)
 
 
 def build_aggregate_prompt(
@@ -245,7 +302,10 @@ def build_aggregate_prompt(
                 "position": person.get("position"),
                 "title": person.get("title"),
                 "entry_date": person.get("entry_date"),
+                "work_scope": person.get("work_scope", ""),
                 "key_results": person.get("key_results", []),
+                "capability_profile": person.get("capability_profile", []),
+                "methodologies": person.get("methodologies", []),
                 "strengths": person.get("strengths", []),
                 "improvements": person.get("improvements", []),
                 "self_review": person.get("self_review", []),
@@ -254,6 +314,7 @@ def build_aggregate_prompt(
                 "workload": person.get("workload"),
                 "support_to_departments": person.get("support_to_departments", []),
                 "risk_flags": person.get("risk_flags", []),
+                "tags": person.get("tags", []),
                 "error": person.get("error"),
             }
         )
@@ -316,7 +377,10 @@ def make_failure_record(report: Report, error: str) -> Dict[str, Any]:
         "position": "",
         "title": "",
         "entry_date": "",
+        "work_scope": "",
         "key_results": [],
+        "capability_profile": [],
+        "methodologies": [],
         "strengths": [],
         "improvements": [],
         "self_review": [],
@@ -325,6 +389,7 @@ def make_failure_record(report: Report, error: str) -> Dict[str, Any]:
         "workload": "提炼失败（估计）",
         "support_to_departments": [],
         "risk_flags": [],
+        "tags": [],
         "source_path": str(report.path),
         "error": error,
     }
@@ -348,13 +413,13 @@ def main(argv: List[str] | None = None) -> None:
     )
     parser.add_argument(
         "--max-tokens-individual",
-        default=4000,
+        default=8000,
         type=int,
         help="个人提炼阶段的 max_tokens（默认 4000，可在 4000-8000 调整）",
     )
     parser.add_argument(
         "--max-tokens-aggregate",
-        default=32000,
+        default=64000,
         type=int,
         help="汇总阶段的 max_tokens（默认 32000，可在 32000-64000 调整）",
     )
